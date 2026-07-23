@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pop the Bubbles!</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;900&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: radial-gradient(ellipse at 20% 50%, #0a0a2e 0%, #000510 60%, #0a0a2e 100%);
+            overflow: hidden;
+            font-family: 'Fredoka One', cursive;
+            color: white;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 1;
+        }
+
+        #webcamVideo {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            object-fit: cover;
+            opacity: 0;
+            z-index: 2;
+            pointer-events: none;
+            transform: scaleX(-1);
+        }
+
+        #ui {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* Scores */
+        .score-box {
+            position: absolute;
+            top: 25px;
+            background: rgba(255,255,255,0.12);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 12px 28px;
+            border: 2px solid rgba(255,255,255,0.2);
+            text-align: center;
+            pointer-events: none;
+        }
+
+        #score-left { left: 30px; border-color: rgba(100,180,255,0.5); }
+        #score-right { right: 30px; border-color: rgba(220,130,255,0.5); }
+
+        .score-label {
+            font-size: 14px;
+            opacity: 0.8;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-family: 'Nunito', sans-serif;
+        }
+
+        .score-number {
+            font-size: 52px;
+            line-height: 1;
+            margin-top: 2px;
+        }
+
+        #score-left .score-number { color: #64b4ff; text-shadow: 0 0 20px #64b4ff; }
+        #score-right .score-number { color: #dc82ff; text-shadow: 0 0 20px #dc82ff; }
+
+        /* Center title */
+        #title-area {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            pointer-events: none;
+        }
+
+        #game-title {
+            font-size: 38px;
+            background: linear-gradient(135deg, #ff9af0, #a0e4ff, #ffe87a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 15px rgba(255,200,255,0.5));
+        }
+
+        /* Start screen */
+        #start-screen {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(ellipse at center, #0d0d3a 0%, #000510 100%);
+            gap: 30px;
+        }
+
+        #start-screen h1 {
+            font-size: 96px;
+            background: linear-gradient(135deg, #ff9af0, #a0e4ff, #ffe87a, #ff9af0);
+            background-size: 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradientShift 4s infinite;
+            filter: drop-shadow(0 0 30px rgba(200,150,255,0.6));
+            text-align: center;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        #start-screen p {
+            font-family: 'Nunito', sans-serif;
+            font-size: 22px;
+            opacity: 0.7;
+            text-align: center;
+            max-width: 500px;
+            line-height: 1.5;
+        }
+
+        .start-btn {
+            font-family: 'Fredoka One', cursive;
+            font-size: 32px;
+            padding: 18px 60px;
+            border-radius: 50px;
+            border: none;
+            cursor: pointer;
+            background: linear-gradient(135deg, #ff6eb4, #a855f7, #3b82f6);
+            color: white;
+            box-shadow: 0 8px 40px rgba(168,85,247,0.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+            pointer-events: all;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 12px 50px rgba(168,85,247,0.7);
+        }
+
+        /* Hand cursors */
+        .hand-cursor {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 15;
+            transform: translate(-50%, -50%);
+            transition: width 0.1s, height 0.1s;
+        }
+
+        #cursor-1 {
+            background: radial-gradient(circle, rgba(100,180,255,0.8) 0%, rgba(100,180,255,0.2) 70%, transparent 100%);
+            border: 3px solid rgba(100,180,255,0.9);
+            box-shadow: 0 0 20px rgba(100,180,255,0.6);
+        }
+
+        #cursor-2 {
+            background: radial-gradient(circle, rgba(220,130,255,0.8) 0%, rgba(220,130,255,0.2) 70%, transparent 100%);
+            border: 3px solid rgba(220,130,255,0.9);
+            box-shadow: 0 0 20px rgba(220,130,255,0.6);
+        }
+
+        /* Status */
+        #status {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Nunito', sans-serif;
+            font-size: 16px;
+            opacity: 0.5;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+<video id="webcamVideo" autoplay playsinline></video>
+
+<!-- Start Screen -->
+<div id="start-screen">
+    <h1>🫧 Pop the<br>Bubbles!</h1>
+    <p>Use your hands to pop as many bubbles as you can! Each player gets their own score.</p>
+    <button class="start-btn" onclick="startGame()">Let's Play! 🎉</button>
+</div>
+
+<!-- Game UI -->
+<div id="ui">
+    <div class="score-box" id="score-left">
+        <div class="score-label">Player 1</div>
+        <div class="score-number" id="p1-score">0</div>
+    </div>
+
+    <div id="title-area">
+        <div id="game-title">🫧 Pop the Bubbles!</div>
+    </div>
+
+    <div class="score-box" id="score-right">
+        <div class="score-label">Player 2</div>
+        <div class="score-number" id="p2-score">0</div>
+    </div>
+
+    <div id="cursor-1" class="hand-cursor" style="display:none"></div>
+    <div id="cursor-2" class="hand-cursor" style="display:none"></div>
+
+    <div id="status">Loading camera...</div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const video = document.getElementById('webcamVideo');
+const status = document.getElementById('status');
+const cursor1 = document.getElementById('cursor-1');
+const cursor2 = document.getElementById('cursor-2');
+const cursors = [cursor1, cursor2];
+
+let W, H;
+function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Game state
+let gameRunning = false;
+let scores = [0, 0];
+let bubbles = [];
+let particles = [];
+let frameCount = 0;
+
+// Hand tracking
+const handPositions = [null, null];
+const handStates = new Map();
+let nextHandId = 0;
+
+// Bubble colors
+const BUBBLE_COLORS = [
+    { fill: 'rgba(255,100,100,', stroke: '#ff6464' },
+    { fill: 'rgba(255,165,50,',  stroke: '#ffa532' },
+    { fill: 'rgba(255,230,50,',  stroke: '#ffe632' },
+    { fill: 'rgba(100,220,100,', stroke: '#64dc64' },
+    { fill: 'rgba(100,180,255,', stroke: '#64b4ff' },
+    { fill: 'rgba(180,100,255,', stroke: '#b464ff' },
+    { fill: 'rgba(255,100,200,', stroke: '#ff64c8' },
+    { fill: 'rgba(100,230,230,', stroke: '#64e6e6' },
+];
+
+// Audio context for sounds
+let audioCtx = null;
+function initAudio() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playPop(colorIndex) {
+    if (!audioCtx) return;
+    const notes = [261, 294, 330, 349, 392, 440, 494, 523];
+    const freq = notes[colorIndex % notes.length];
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.5, audioCtx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+    osc.type = 'sine';
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + 0.3);
+}
+
+// Bubble class
+class Bubble {
+    constructor() {
+        this.radius = 30 + Math.random() * 60;
+        this.x = this.radius + Math.random() * (W - this.radius * 2);
+        this.y = H + this.radius;
+        this.speedY = 0.8 + Math.random() * 1.5;
+        this.speedX = (Math.random() - 0.5) * 0.8;
+        this.wobble = Math.random() * Math.PI * 2;
+        this.wobbleSpeed = 0.02 + Math.random() * 0.02;
+        this.colorIndex = Math.floor(Math.random() * BUBBLE_COLORS.length);
+        this.color = BUBBLE_COLORS[this.colorIndex];
+        this.opacity = 0.7 + Math.random() * 0.3;
+        this.popped = false;
+        this.popScale = 1;
+        this.popAlpha = 1;
+        this.shimmer = Math.random() * Math.PI * 2;
+    }
+
+    update() {
+        if (this.popped) {
+            this.popScale += 0.15;
+            this.popAlpha -= 0.08;
+            return;
+        }
+        this.y -= this.speedY;
+        this.wobble += this.wobbleSpeed;
+        this.x += Math.sin(this.wobble) * 0.5 + this.speedX;
+        this.shimmer += 0.05;
+    }
+
+    draw() {
+        if (this.popped) {
+            if (this.popAlpha <= 0) return;
+            ctx.save();
+            ctx.globalAlpha = this.popAlpha;
+            ctx.strokeStyle = this.color.stroke;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius * this.popScale, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+            return;
+        }
+
+        ctx.save();
+
+        // Main bubble body
+        const grad = ctx.createRadialGradient(
+            this.x - this.radius * 0.3, this.y - this.radius * 0.3, 0,
+            this.x, this.y, this.radius
+        );
+        grad.addColorStop(0, this.color.fill + '0.9)');
+        grad.addColorStop(0.5, this.color.fill + (this.opacity * 0.5) + ')');
+        grad.addColorStop(1, this.color.fill + '0.1)');
+
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Bubble rim
+        ctx.strokeStyle = this.color.stroke;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.6;
+        ctx.stroke();
+
+        // Shine highlight
+        ctx.globalAlpha = 0.5 + Math.sin(this.shimmer) * 0.2;
+        const shineGrad = ctx.createRadialGradient(
+            this.x - this.radius * 0.35, this.y - this.radius * 0.35, 0,
+            this.x - this.radius * 0.35, this.y - this.radius * 0.35, this.radius * 0.45
+        );
+        shineGrad.addColorStop(0, 'rgba(255,255,255,0.9)');
+        shineGrad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.beginPath();
+        ctx.arc(this.x - this.radius * 0.35, this.y - this.radius * 0.35, this.radius * 0.45, 0, Math.PI * 2);
+        ctx.fillStyle = shineGrad;
+        ctx.fill();
+
+        // Small secondary shine
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        ctx.arc(this.x + this.radius * 0.3, this.y + this.radius * 0.25, this.radius * 0.15, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    isAlive() {
+        if (this.popped) return this.popAlpha > 0;
+        return this.y + this.radius > 0;
+    }
+
+    checkPop(handX, handY) {
+        if (this.popped) return false;
+        const dx = this.x - handX;
+        const dy = this.y - handY;
+        return Math.sqrt(dx * dx + dy * dy) < this.radius + 25;
+    }
+}
+
+// Particle class for pop effects
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        this.vx = (Math.random() - 0.5) * 12;
+        this.vy = (Math.random() - 0.5) * 12 - 3;
+        this.radius = 3 + Math.random() * 5;
+        this.color = color;
+        this.alpha = 1;
+        this.gravity = 0.3;
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += this.gravity;
+        this.alpha -= 0.03;
+        this.radius *= 0.97;
+    }
+    draw() {
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+    isAlive() { return this.alpha > 0; }
+}
+
+// Spawn bubbles
+function spawnBubble() {
+    bubbles.push(new Bubble());
+}
+
+// Game loop
+function gameLoop() {
+    if (!gameRunning) return;
+    requestAnimationFrame(gameLoop);
+
+    // Clear
+    ctx.clearRect(0, 0, W, H);
+
+    // Draw starfield background
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(0, 0, W, H);
+
+    frameCount++;
+
+    // Spawn bubbles
+    if (frameCount % 45 === 0) spawnBubble();
+    if (frameCount % 90 === 0) spawnBubble(); // extra one occasionally
+
+    // Update and draw bubbles
+    bubbles.forEach(b => b.update());
+
+    // Check pops
+    handPositions.forEach((pos, playerIdx) => {
+        if (!pos) return;
+        bubbles.forEach(b => {
+            if (b.checkPop(pos.x, pos.y)) {
+                b.popped = true;
+                playPop(b.colorIndex);
+                scores[playerIdx]++;
+                document.getElementById(`p${playerIdx + 1}-score`).textContent = scores[playerIdx];
+
+                // Spawn particles
+                for (let i = 0; i < 12; i++) {
+                    particles.push(new Particle(b.x, b.y, b.color.stroke));
+                }
+
+                // Score popup
+                showScorePopup(b.x, b.y, playerIdx);
+            }
+        });
+    });
+
+    bubbles = bubbles.filter(b => b.isAlive());
+
+    // Draw bubbles
+    bubbles.forEach(b => b.draw());
+
+    // Update and draw particles
+    particles.forEach(p => p.update());
+    particles.forEach(p => p.draw());
+    particles = particles.filter(p => p.isAlive());
+
+    // Draw hand ripples
+    handPositions.forEach((pos, idx) => {
+        if (!pos) return;
+        const colors = ['rgba(100,180,255,', 'rgba(220,130,255,'];
+        ctx.save();
+        ctx.strokeStyle = colors[idx] + '0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 35, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    });
+}
+
+// Score popup floating text
+const popups = [];
+function showScorePopup(x, y, playerIdx) {
+    popups.push({ x, y, alpha: 1, vy: -2, playerIdx });
+}
+
+function drawPopups() {
+    popups.forEach(p => {
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.font = 'bold 28px Fredoka One';
+        ctx.fillStyle = p.playerIdx === 0 ? '#64b4ff' : '#dc82ff';
+        ctx.textAlign = 'center';
+        ctx.fillText('+1', p.x, p.y);
+        ctx.restore();
+        p.y += p.vy;
+        p.alpha -= 0.03;
+    });
+    popups.splice(0, popups.length, ...popups.filter(p => p.alpha > 0));
+}
+
+// MediaPipe Hand Tracking
+function getOrCreateHand(landmarks) {
+    const palm = landmarks[0];
+    const now = Date.now();
+
+    for (const [id, state] of handStates.entries()) {
+        if (now - state.lastSeen > 500) handStates.delete(id);
+    }
+
+    let closestId = null, closestDist = Infinity;
+    for (const [id, state] of handStates.entries()) {
+        const dx = palm.x - state.palmX;
+        const dy = palm.y - state.palmY;
+        const d = Math.sqrt(dx*dx + dy*dy);
+        if (d < 0.15 && d < closestDist) { closestDist = d; closestId = id; }
+    }
+
+    if (closestId !== null) {
+        handStates.get(closestId).palmX = palm.x;
+        handStates.get(closestId).palmY = palm.y;
+        handStates.get(closestId).lastSeen = now;
+        return closestId;
+    } else {
+        const newId = nextHandId++;
+        handStates.set(newId, { palmX: palm.x, palmY: palm.y, lastSeen: now });
+        return newId;
+    }
+}
+
+const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.65, minTrackingConfidence: 0.6 });
+
+hands.onResults(results => {
+    handPositions[0] = null;
+    handPositions[1] = null;
+
+    if (!results.multiHandLandmarks) return;
+
+    const seen = new Set();
+    results.multiHandLandmarks.forEach((landmarks, i) => {
+        const id = getOrCreateHand(landmarks);
+        const slot = seen.size < 2 ? seen.size : -1;
+        seen.add(id);
+        if (slot < 0) return;
+
+        const tip = landmarks[8];
+        const x = (1 - tip.x) * W;
+        const y = tip.y * H;
+        handPositions[slot] = { x, y };
+
+        const c = cursors[slot];
+        c.style.display = 'block';
+        c.style.left = x + 'px';
+        c.style.top = y + 'px';
+    });
+
+    if (!results.multiHandLandmarks || results.multiHandLandmarks.length < 2) {
+        if (results.multiHandLandmarks?.length < 1) cursors[0].style.display = 'none';
+        if (results.multiHandLandmarks?.length < 2) cursors[1].style.display = 'none';
+    }
+});
+
+const camera = new Camera(video, {
+    onFrame: async () => { await hands.send({ image: video }); },
+    width: 1280, height: 720
+});
+
+camera.start().then(() => {
+    status.textContent = 'Camera ready! Press Play to start 🎉';
+});
+
+function startGame() {
+    if (!audioCtx) initAudio();
+    document.getElementById('start-screen').style.display = 'none';
+    gameRunning = true;
+    scores = [0, 0];
+    bubbles = [];
+    particles = [];
+    frameCount = 0;
+    status.textContent = 'Pop those bubbles! 🫧';
+
+    // Pre-spawn some bubbles
+    for (let i = 0; i < 8; i++) {
+        const b = new Bubble();
+        b.y = Math.random() * H;
+        bubbles.push(b);
+    }
+
+    // Patch game loop to include popups
+    const origLoop = gameLoop;
+    function loop() {
+        if (!gameRunning) return;
+        requestAnimationFrame(loop);
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillRect(0, 0, W, H);
+        frameCount++;
+        if (frameCount % 45 === 0) spawnBubble();
+        if (frameCount % 120 === 0) spawnBubble();
+        bubbles.forEach(b => b.update());
+        handPositions.forEach((pos, playerIdx) => {
+            if (!pos) return;
+            bubbles.forEach(b => {
+                if (b.checkPop(pos.x, pos.y)) {
+                    b.popped = true;
+                    playPop(b.colorIndex);
+                    scores[playerIdx]++;
+                    document.getElementById(`p${playerIdx + 1}-score`).textContent = scores[playerIdx];
+                    for (let i = 0; i < 12; i++) particles.push(new Particle(b.x, b.y, b.color.stroke));
+                    showScorePopup(b.x, b.y, playerIdx);
+                }
+            });
+        });
+        bubbles = bubbles.filter(b => b.isAlive());
+        bubbles.forEach(b => b.draw());
+        particles.forEach(p => p.update());
+        particles.forEach(p => p.draw());
+        particles = particles.filter(p => p.isAlive());
+        drawPopups();
+        handPositions.forEach((pos, idx) => {
+            if (!pos) return;
+            const colors = ['rgba(100,180,255,', 'rgba(220,130,255,'];
+            ctx.save();
+            ctx.strokeStyle = colors[idx] + '0.4)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 35, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        });
+    }
+    loop();
+}
+</script>
+</body>
+</html>
